@@ -14,7 +14,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useMemo, useEffect } = React;
+const { useState, useMemo, useEffect, useCallback } = React;
 
 const TEAM = ["Abel", "Mauricio", "Alvaro", "Emerson"];
 const PRIORITIES = ["Alta", "Media", "Baja"];
@@ -22,23 +22,51 @@ const STATUSES = ["Pendiente", "En progreso", "Listo"];
 const CATEGORIES = ["Soporte", "Infraestructura", "Desarrollo", "Seguridad", "Redes", "Administración", "Otro"];
 const GREEN = "#1a5c2e", GREEN_DARK = "#134522", GREEN_LIGHT = "#e8f5ee", GREEN_MID = "#2d7a45";
 const AVATAR_COLORS = ["#1a5c2e","#2563eb","#7c3aed","#b45309","#0e7490"];
+
 const SUPABASE_URL = "https://vcdgurkuoqsdvwvpnevr.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjZGd1cmt1b3FzZHZ3dnBuZXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MjYxNDQsImV4cCI6MjA4ODMwMjE0NH0._fC7LXnggqXyniyOAb2orZj-QHY1_Xrf_-FnKVju9S8";
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-console.log("Supabase inicializado:", supabase ? "OK" : "ERROR");
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const today = new Date().toISOString().split("T")[0];
 
 const STATUS_STYLE = {"Pendiente":"bg-gray-100 text-gray-600 border border-gray-300","En progreso":"bg-blue-100 text-blue-700 border border-blue-300","Listo":"bg-green-100 text-green-700 border border-green-400"};
 const PRIORITY_STYLE = {"Alta":"bg-red-100 text-red-700 border border-red-300","Media":"bg-yellow-100 text-yellow-700 border border-yellow-300","Baja":"bg-gray-100 text-gray-500 border border-gray-300"};
 const CATEGORY_STYLE = {"Soporte":"bg-purple-100 text-purple-700 border border-purple-300","Infraestructura":"bg-orange-100 text-orange-700 border border-orange-300","Desarrollo":"bg-cyan-100 text-cyan-700 border border-cyan-300","Seguridad":"bg-red-100 text-red-700 border border-red-300","Redes":"bg-indigo-100 text-indigo-700 border border-indigo-300","Administración":"bg-teal-100 text-teal-700 border border-teal-300","Otro":"bg-gray-100 text-gray-500 border border-gray-300"};
 
-const INIT = [
-  {id:1,name:"Migración servidor",assignees:["Mauricio","Abel"],priority:"Alta",status:"En progreso",deadline:"2026-03-15",category:"Infraestructura",notes:"Revisar backups antes de migrar",progress:45,links:[],comments:[],subtasks:[{id:11,text:"Backup completo",done:true},{id:12,text:"Migrar datos",done:false}]},
-  {id:2,name:"Actualización ERP",assignees:["Alvaro"],priority:"Media",status:"Pendiente",deadline:"2026-03-28",category:"Desarrollo",notes:"",progress:0,links:[],comments:[],subtasks:[]},
-  {id:3,name:"Soporte equipos oficina",assignees:["Emerson"],priority:"Baja",status:"Listo",deadline:"2026-03-05",category:"Soporte",notes:"Completado sin incidencias",progress:100,links:[],comments:[{id:31,author:"Emerson",text:"Todo listo, sin problemas.",date:"2026-03-05"}],subtasks:[]},
-  {id:4,name:"Revisión de seguridad red",assignees:["Abel","Mauricio","Alvaro","Emerson"],priority:"Alta",status:"Pendiente",deadline:"2026-03-20",category:"Seguridad",notes:"Proyecto comunitario",progress:10,links:[],comments:[],subtasks:[{id:41,text:"Escaneo de puertos",done:false},{id:42,text:"Auditoría de usuarios",done:false}]},
-];
 const EMPTY = {name:"",assignees:["Abel"],priority:"Media",status:"Pendiente",deadline:today,category:"Soporte",notes:"",progress:0,links:[],comments:[],subtasks:[]};
+
+// ── Helpers de conversión Supabase ↔ App ──────────────────────────────────
+function rowToProject(r) {
+  return {
+    id: r.id,
+    name: r.name || "",
+    assignees: Array.isArray(r.assignees) ? r.assignees : [],
+    priority: r.priority || "Media",
+    status: r.status || "Pendiente",
+    deadline: r.deadline || today,
+    category: r.category || "Otro",
+    notes: r.notes || "",
+    progress: r.progress || 0,
+    links: Array.isArray(r.links) ? r.links : [],
+    comments: Array.isArray(r.comments) ? r.comments : [],
+    subtasks: Array.isArray(r.subtasks) ? r.subtasks : [],
+  };
+}
+function projectToRow(p) {
+  return {
+    name: p.name,
+    assignees: p.assignees,
+    priority: p.priority,
+    status: p.status,
+    deadline: p.deadline,
+    category: p.category,
+    notes: p.notes,
+    progress: p.progress,
+    links: p.links,
+    comments: p.comments,
+    subtasks: p.subtasks,
+  };
+}
 
 function isOverdue(d,s){return s!=="Listo"&&d<today;}
 function daysUntil(d){return Math.ceil((new Date(d)-new Date(today))/(1000*60*60*24));}
@@ -214,68 +242,147 @@ function CalendarView({projects}){
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// APP PRINCIPAL
+// ══════════════════════════════════════════════════════════════
 function App(){
-  const [projects,setProjects]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [saveStatus,setSaveStatus]=useState("idle");
-  const [form,setForm]=useState(EMPTY);
-  const [editId,setEditId]=useState(null);
-  const [showForm,setShowForm]=useState(false);
-  const [filterStatus,setFilterStatus]=useState("Todos");
-  const [filterAssignee,setFilterAssignee]=useState("Todos");
-  const [filterCategory,setFilterCategory]=useState("Todas");
-  const [view,setView]=useState("tabla");
-  const [detailProject,setDetailProject]=useState(null);
-  const [alertDays,setAlertDays]=useState(3);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | error
+  const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("Todos");
+  const [filterAssignee, setFilterAssignee] = useState("Todos");
+  const [filterCategory, setFilterCategory] = useState("Todas");
+  const [view, setView] = useState("tabla");
+  const [detailProject, setDetailProject] = useState(null);
+  const [alertDays, setAlertDays] = useState(3);
+  const [dbError, setDbError] = useState(null);
 
-  useEffect(()=>{
-    try{const r=localStorage.getItem(STORAGE_KEY);setProjects(r?JSON.parse(r):INIT);}
-    catch{setProjects(INIT);}
-    setLoading(false);
-  },[]);
+  // ── CARGAR desde Supabase ──────────────────────────────────
+  useEffect(() => {
+    async function fetchProjects() {
+      setLoading(true);
+      const { data, error } = await sb.from("projects").select("*").order("id", { ascending: true });
+      if (error) {
+        console.error("Error cargando proyectos:", error);
+        setDbError("No se pudo conectar a la base de datos: " + error.message);
+      } else {
+        setProjects(data.map(rowToProject));
+      }
+      setLoading(false);
+    }
+    fetchProjects();
+  }, []);
 
-  useEffect(()=>{
-    if(loading)return;
+  // ── GUARDAR (upsert) en Supabase ───────────────────────────
+  async function persistProject(project) {
     setSaveStatus("saving");
-    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(projects));setSaveStatus("saved");setTimeout(()=>setSaveStatus("idle"),2000);}
-    catch{setSaveStatus("error");}
-  },[projects]);
+    const row = { id: project.id, ...projectToRow(project) };
+    const { error } = await sb.from("projects").upsert(row, { onConflict: "id" });
+    if (error) {
+      console.error("Error guardando:", error);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } else {
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    }
+  }
 
-  const stats=useMemo(()=>({
-    total:projects.length,
-    pendiente:projects.filter(p=>p.status==="Pendiente").length,
-    progreso:projects.filter(p=>p.status==="En progreso").length,
-    listo:projects.filter(p=>p.status==="Listo").length,
-    vencidos:projects.filter(p=>isOverdue(p.deadline,p.status)).length,
-    avgProgress:projects.length?Math.round(projects.reduce((a,p)=>a+p.progress,0)/projects.length):0,
-  }),[projects]);
+  // ── CREAR proyecto ─────────────────────────────────────────
+  async function saveProject() {
+    if (!form.name.trim()) return;
+    setSaveStatus("saving");
 
-  const alerts=useMemo(()=>projects.filter(p=>p.status!=="Listo"&&!isOverdue(p.deadline,p.status)&&daysUntil(p.deadline)<=alertDays),[projects,alertDays]);
-  const catStats=useMemo(()=>CATEGORIES.map(c=>({cat:c,count:projects.filter(p=>p.category===c).length})).filter(x=>x.count>0),[projects]);
-  const filtered=useMemo(()=>projects.filter(p=>(filterStatus==="Todos"||p.status===filterStatus)&&(filterAssignee==="Todos"||p.assignees.includes(filterAssignee))&&(filterCategory==="Todas"||p.category===filterCategory)),[projects,filterStatus,filterAssignee,filterCategory]);
+    if (editId !== null) {
+      // UPDATE
+      const updated = { ...form, id: editId };
+      const { error } = await sb.from("projects").update(projectToRow(updated)).eq("id", editId);
+      if (error) { console.error(error); setSaveStatus("error"); return; }
+      setProjects(ps => ps.map(p => p.id === editId ? updated : p));
+      if (detailProject?.id === editId) setDetailProject(updated);
+      setEditId(null);
+    } else {
+      // INSERT
+      const { data, error } = await sb.from("projects").insert(projectToRow(form)).select().single();
+      if (error) { console.error(error); setSaveStatus("error"); return; }
+      setProjects(ps => [...ps, rowToProject(data)]);
+    }
 
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 2000);
+    setForm(EMPTY);
+    setShowForm(false);
+  }
+
+  // ── ELIMINAR proyecto ──────────────────────────────────────
+  async function deleteProject(id) {
+    const { error } = await sb.from("projects").delete().eq("id", id);
+    if (error) { console.error(error); alert("❌ Error al eliminar"); return; }
+    setProjects(ps => ps.filter(p => p.id !== id));
+    if (detailProject?.id === id) setDetailProject(null);
+  }
+
+  // ── ACTUALIZAR proyecto (usado desde DetailModal y cycleStatus) ──
+  async function updateProject(updated) {
+    setProjects(ps => ps.map(p => p.id === updated.id ? updated : p));
+    setDetailProject(updated);
+    await persistProject(updated);
+  }
+
+  async function cycleStatus(id) {
+    const p = projects.find(x => x.id === id);
+    if (!p) return;
+    const updated = { ...p, status: STATUSES[(STATUSES.indexOf(p.status) + 1) % STATUSES.length] };
+    await updateProject(updated);
+  }
+
+  function startEdit(p) { setForm({...p}); setEditId(p.id); setShowForm(true); }
   function toggleAssignee(name){setForm(f=>{const has=f.assignees.includes(name);if(has&&f.assignees.length===1)return f;return{...f,assignees:has?f.assignees.filter(a=>a!==name):[...f.assignees,name]};});}
   function toggleAll(){setForm(f=>f.assignees.length===TEAM.length?{...f,assignees:[TEAM[0]]}:{...f,assignees:[...TEAM]});}
-  function saveProject(){if(!form.name.trim())return;if(editId!==null){setProjects(ps=>ps.map(p=>p.id===editId?{...form,id:editId}:p));setEditId(null);}else setProjects(ps=>[...ps,{...form,id:Date.now()}]);setForm(EMPTY);setShowForm(false);}
-  function deleteProject(id){setProjects(ps=>ps.filter(p=>p.id!==id));if(detailProject?.id===id)setDetailProject(null);}
-  function startEdit(p){setForm({...p});setEditId(p.id);setShowForm(true);}
-  function cycleStatus(id){setProjects(ps=>ps.map(p=>p.id!==id?p:{...p,status:STATUSES[(STATUSES.indexOf(p.status)+1)%STATUSES.length]}));}
-  function updateProject(updated){setProjects(ps=>ps.map(p=>p.id===updated.id?updated:p));setDetailProject(updated);}
+
+  const stats = useMemo(() => ({
+    total: projects.length,
+    pendiente: projects.filter(p => p.status === "Pendiente").length,
+    progreso: projects.filter(p => p.status === "En progreso").length,
+    listo: projects.filter(p => p.status === "Listo").length,
+    vencidos: projects.filter(p => isOverdue(p.deadline, p.status)).length,
+    avgProgress: projects.length ? Math.round(projects.reduce((a,p) => a + p.progress, 0) / projects.length) : 0,
+  }), [projects]);
+
+  const alerts = useMemo(() => projects.filter(p => p.status !== "Listo" && !isOverdue(p.deadline, p.status) && daysUntil(p.deadline) <= alertDays), [projects, alertDays]);
+  const catStats = useMemo(() => CATEGORIES.map(c => ({cat:c, count:projects.filter(p=>p.category===c).length})).filter(x=>x.count>0), [projects]);
+  const filtered = useMemo(() => projects.filter(p =>
+    (filterStatus === "Todos" || p.status === filterStatus) &&
+    (filterAssignee === "Todos" || p.assignees.includes(filterAssignee)) &&
+    (filterCategory === "Todas" || p.category === filterCategory)
+  ), [projects, filterStatus, filterAssignee, filterCategory]);
+
   function printReport(){
     const w=window.open("","_blank");
     const rows=projects.map(p=>`<tr><td>${p.name}</td><td>${p.assignees.join(", ")}</td><td>${p.category}</td><td>${p.priority}</td><td>${p.status}</td><td>${p.progress}%</td><td>${p.deadline}</td></tr>`).join("");
     w.document.write(`<html><head><title>Reporte IT – Parque Tempisque</title><style>body{font-family:sans-serif;padding:24px}h1{color:#134522}table{width:100%;border-collapse:collapse;margin-top:16px}th{background:#134522;color:white;padding:8px;text-align:left}td{padding:8px;border-bottom:1px solid #e2e8f0}tr:nth-child(even){background:#f4fbf6}</style></head><body><h1>📊 Reporte Departamento IT</h1><h3 style="color:#2d7a45;margin-top:0">Parque Tempisque</h3><p>${new Date().toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p><p><b>Total:</b> ${stats.total} &nbsp;|&nbsp; <b>Completados:</b> ${stats.listo} &nbsp;|&nbsp; <b>En progreso:</b> ${stats.progreso} &nbsp;|&nbsp; <b>Pendientes:</b> ${stats.pendiente} &nbsp;|&nbsp; <b>Avance promedio:</b> ${stats.avgProgress}%</p><table><thead><tr><th>Proyecto</th><th>Participantes</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Avance</th><th>Deadline</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
-    w.document.close();w.print();
+    w.document.close(); w.print();
   }
 
-  const S={input:{width:"100%",border:"1px solid #e5e7eb",borderRadius:8,padding:"8px 12px",fontSize:13,marginTop:4,boxSizing:"border-box"},select:{width:"100%",border:"1px solid #e5e7eb",borderRadius:8,padding:"8px 12px",fontSize:13,marginTop:4}};
-  const VIEWS=[{k:"tabla",l:"📋 Tabla"},{k:"calendario",l:"📅 Calendario"},{k:"resumen",l:"📊 Resumen Jefe"}];
+  const S = {
+    input:{width:"100%",border:"1px solid #e5e7eb",borderRadius:8,padding:"8px 12px",fontSize:13,marginTop:4,boxSizing:"border-box"},
+    select:{width:"100%",border:"1px solid #e5e7eb",borderRadius:8,padding:"8px 12px",fontSize:13,marginTop:4}
+  };
+  const VIEWS = [{k:"tabla",l:"📋 Tabla"},{k:"calendario",l:"📅 Calendario"},{k:"resumen",l:"📊 Resumen Jefe"}];
 
-  if(loading)return<div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,background:GREEN_LIGHT}}><Logo size={64}/><p style={{color:GREEN_DARK,fontWeight:700,fontSize:15}}>Cargando proyectos...</p></div>;
+  if (loading) return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,background:GREEN_LIGHT}}>
+      <Logo size={64}/>
+      <p style={{color:GREEN_DARK,fontWeight:700,fontSize:15}}>Conectando con Supabase...</p>
+    </div>
+  );
 
-  return(
+  return (
     <div style={{minHeight:"100vh",background:GREEN_LIGHT,fontFamily:"sans-serif"}}>
-      {detailProject&&<DetailModal project={detailProject} onClose={()=>setDetailProject(null)} onUpdate={updateProject}/>}
+      {detailProject && <DetailModal project={detailProject} onClose={()=>setDetailProject(null)} onUpdate={updateProject}/>}
 
       {/* HEADER */}
       <div style={{background:GREEN_DARK,padding:"12px 24px"}}>
@@ -289,15 +396,12 @@ function App(){
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            <div style={{fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:600,background:saveStatus==="saved"?"#d1fae5":saveStatus==="saving"?"#fef9c3":saveStatus==="error"?"#fee2e2":"rgba(255,255,255,0.1)",color:saveStatus==="saved"?"#065f46":saveStatus==="saving"?"#854d0e":saveStatus==="error"?"#991b1b":"#a8d5b5"}}>
-              {saveStatus==="saving"?"💾 Guardando...":saveStatus==="saved"?"✅ Guardado":saveStatus==="error"?"❌ Error":"💾 Auto-guardado"}
+            <div style={{fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:600,
+              background:saveStatus==="saved"?"#d1fae5":saveStatus==="saving"?"#fef9c3":saveStatus==="error"?"#fee2e2":"rgba(255,255,255,0.1)",
+              color:saveStatus==="saved"?"#065f46":saveStatus==="saving"?"#854d0e":saveStatus==="error"?"#991b1b":"#a8d5b5"}}>
+              {saveStatus==="saving"?"☁️ Guardando...":saveStatus==="saved"?"✅ Guardado en Supabase":saveStatus==="error"?"❌ Error al guardar":"☁️ Supabase"}
             </div>
             <button onClick={printReport} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>📤 Exportar PDF</button>
-            <button onClick={()=>{const blob=new Blob([JSON.stringify(projects,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="dashboard-it-backup.json";a.click();}} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>💾 Exportar JSON</button>
-            <label style={{background:"rgba(255,255,255,0.15)",color:"white",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-              📥 Importar JSON
-              <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(Array.isArray(data)){setProjects(data);alert("✅ Datos importados correctamente");}else{alert("❌ Archivo JSON inválido");}}catch{alert("❌ Error al leer el archivo");}};reader.readAsText(file);e.target.value="";}}/>
-            </label>
             <div style={{display:"flex",gap:4}}>
               {VIEWS.map(v=><button key={v.k} onClick={()=>setView(v.k)} style={{background:view===v.k?"white":"rgba(255,255,255,0.12)",color:view===v.k?GREEN_DARK:"white",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{v.l}</button>)}
             </div>
@@ -307,6 +411,9 @@ function App(){
       <div style={{height:4,background:`linear-gradient(90deg,${GREEN_MID},#7cc47a,${GREEN_MID})`}}/>
 
       <div style={{maxWidth:1000,margin:"0 auto",padding:"20px 16px"}}>
+
+        {/* Error de DB */}
+        {dbError && <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#991b1b",fontSize:13}}>❌ {dbError}</div>}
 
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:16}}>
@@ -411,7 +518,7 @@ function App(){
                         <div style={{display:"flex",gap:8}}>
                           <button onClick={()=>setDetailProject(p)} style={{background:"none",border:"none",color:GREEN,fontSize:12,fontWeight:600,cursor:"pointer"}}>Ver</button>
                           <button onClick={()=>startEdit(p)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:12,fontWeight:600,cursor:"pointer"}}>Editar</button>
-                          <button onClick={()=>deleteProject(p.id)} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
+                          <button onClick={()=>{ if(confirm("¿Eliminar este proyecto?")) deleteProject(p.id); }} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
                         </div>
                       </td>
                     </tr>
@@ -419,7 +526,7 @@ function App(){
                 </tbody>
               </table>
             </div>
-            <p style={{fontSize:11,color:GREEN_MID,textAlign:"center",marginTop:8}}>💡 Clic en "Ver" para bitácora, links y subtareas · Clic en el estado para cambiarlo · Datos guardados en este navegador</p>
+            <p style={{fontSize:11,color:GREEN_MID,textAlign:"center",marginTop:8}}>☁️ Datos sincronizados con Supabase · Clic en estado para cambiarlo · Clic en "Ver" para detalles</p>
           </>
         )}
 
