@@ -48,7 +48,7 @@ function AvatarGroup({assignees}){
   if(assignees.length===TEAM.length) return <span style={{fontSize:12,fontWeight:700,padding:"2px 8px",borderRadius:20,background:GREEN_LIGHT,color:GREEN_DARK,border:`1px solid #a8d5b5`}}>🌿 Todos</span>;
   return <div style={{display:"flex",alignItems:"center",gap:2}}>{assignees.map((a,i)=><div key={a} style={{marginLeft:i===0?0:-6}}><Avatar name={a}/></div>)}<span style={{fontSize:11,color:"#6b7280",marginLeft:4}}>{assignees.join(", ")}</span></div>;
 }
-function Logo({size=48}){
+function Logo({size=70}){
   return(
     <img
       src="img/logoPTit2.png"
