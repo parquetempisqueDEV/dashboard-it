@@ -289,6 +289,11 @@ function App(){
               {saveStatus==="saving"?"💾 Guardando...":saveStatus==="saved"?"✅ Guardado":saveStatus==="error"?"❌ Error":"💾 Auto-guardado"}
             </div>
             <button onClick={printReport} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>📤 Exportar PDF</button>
+            <button onClick={()=>{const blob=new Blob([JSON.stringify(projects,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="dashboard-it-backup.json";a.click();}} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>💾 Exportar JSON</button>
+            <label style={{background:"rgba(255,255,255,0.15)",color:"white",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+              📥 Importar JSON
+              <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(Array.isArray(data)){setProjects(data);alert("✅ Datos importados correctamente");}else{alert("❌ Archivo JSON inválido");}}catch{alert("❌ Error al leer el archivo");}};reader.readAsText(file);e.target.value="";}}/>
+            </label>
             <div style={{display:"flex",gap:4}}>
               {VIEWS.map(v=><button key={v.k} onClick={()=>setView(v.k)} style={{background:view===v.k?"white":"rgba(255,255,255,0.12)",color:view===v.k?GREEN_DARK:"white",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{v.l}</button>)}
             </div>
