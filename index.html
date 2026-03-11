@@ -81,16 +81,7 @@ function AvatarGroup({assignees}){
 }
 function Logo({size=48}){
   return(
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-      <circle cx="50" cy="50" r="48" stroke="white" strokeWidth="5" fill="none"/>
-      <path d="M28 68 Q24 58 28 52 Q32 47 36 50 L44 58" stroke="white" strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-      <path d="M72 68 Q76 58 72 52 Q68 47 64 50 L56 58" stroke="white" strokeWidth="3.5" fill="none" strokeLinecap="round"/>
-      <path d="M36 50 Q40 44 50 62 Q60 44 64 50" stroke="white" strokeWidth="3" fill="none" strokeLinecap="round"/>
-      <path d="M50 20 Q62 28 64 42 Q62 54 50 58 Q38 54 36 42 Q38 28 50 20Z" fill="white" opacity="0.9"/>
-      <text x="50" y="36" textAnchor="middle" fontSize="5.5" fill={GREEN} fontFamily="monospace" fontWeight="bold">1010</text>
-      <text x="50" y="43" textAnchor="middle" fontSize="5.5" fill={GREEN} fontFamily="monospace" fontWeight="bold">0111</text>
-      <text x="50" y="50" textAnchor="middle" fontSize="5.5" fill={GREEN} fontFamily="monospace" fontWeight="bold">1001</text>
-    </svg>
+    <img src="https://vr506.com/assets/logoPT.png" width={size} height={size} alt="Parque Tempisque" style={{objectFit:"contain"}}/>
   );
 }
 
