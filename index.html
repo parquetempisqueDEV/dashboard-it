@@ -12,9 +12,9 @@
   <style>*{box-sizing:border-box}body{margin:0;font-family:sans-serif;background:#e8f5ee}</style>
 </head>
 <body>
-<div id="root"></div> 
+<div id="root"></div>
 <script type="text/babel">
-const { useState, useMemo, useEffect, useCallback } = React;
+const { useState, useMemo, useEffect, useRef } = React;
 
 const TEAM = ["Abel", "Mauricio", "Alvaro", "Emerson"];
 const PRIORITIES = ["Alta", "Media", "Baja"];
@@ -35,7 +35,6 @@ const CATEGORY_STYLE = {"Soporte":"bg-purple-100 text-purple-700 border border-p
 
 const EMPTY = {name:"",assignees:["Abel"],priority:"Media",status:"Pendiente",deadline:today,category:"Soporte",notes:"",progress:0,links:[],comments:[],subtasks:[]};
 
-// ── Helpers de conversión Supabase ↔ App ──────────────────────────────────
 function rowToProject(r) {
   return {
     id: r.id,
@@ -92,6 +91,19 @@ function Logo({size=48}){
       <text x="50" y="43" textAnchor="middle" fontSize="5.5" fill={GREEN} fontFamily="monospace" fontWeight="bold">0111</text>
       <text x="50" y="50" textAnchor="middle" fontSize="5.5" fill={GREEN} fontFamily="monospace" fontWeight="bold">1001</text>
     </svg>
+  );
+}
+
+// ── Toast de notificación ──────────────────────────────────────
+function Toast({msg, type, onDone}) {
+  useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t); }, []);
+  const bg = type === "ok" ? "#d1fae5" : type === "err" ? "#fee2e2" : "#fefce8";
+  const color = type === "ok" ? "#065f46" : type === "err" ? "#991b1b" : "#92400e";
+  const icon = type === "ok" ? "✅" : type === "err" ? "❌" : "⏳";
+  return (
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:9999,background:bg,color,border:`1px solid ${color}33`,borderRadius:12,padding:"12px 20px",fontWeight:700,fontSize:13,boxShadow:"0 4px 16px rgba(0,0,0,0.15)",maxWidth:320}}>
+      {icon} {msg}
+    </div>
   );
 }
 
@@ -248,7 +260,8 @@ function CalendarView({projects}){
 function App(){
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState("idle"); // idle | saving | saved | error
+  const [saving, setSaving] = useState(false);          // ← flag único de guardado
+  const [toast, setToast] = useState(null);             // ← {msg, type}
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -259,6 +272,8 @@ function App(){
   const [detailProject, setDetailProject] = useState(null);
   const [alertDays, setAlertDays] = useState(3);
   const [dbError, setDbError] = useState(null);
+
+  function showToast(msg, type="ok") { setToast({msg, type}); }
 
   // ── CARGAR desde Supabase ──────────────────────────────────
   useEffect(() => {
@@ -278,58 +293,66 @@ function App(){
 
   // ── GUARDAR (upsert) en Supabase ───────────────────────────
   async function persistProject(project) {
-    setSaveStatus("saving");
     const row = { id: project.id, ...projectToRow(project) };
     const { error } = await sb.from("projects").upsert(row, { onConflict: "id" });
-    if (error) {
-      console.error("Error guardando:", error);
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3000);
-    } else {
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    }
+    if (error) { console.error("persistProject error:", error); showToast("Error al guardar: " + error.message, "err"); return false; }
+    return true;
   }
 
-  // ── CREAR proyecto ─────────────────────────────────────────
+  // ── CREAR / EDITAR proyecto ────────────────────────────────
   async function saveProject() {
-    if (!form.name.trim()) return;
-    setSaveStatus("saving");
-
-    if (editId !== null) {
-      // UPDATE
-      const updated = { ...form, id: editId };
-      const { error } = await sb.from("projects").update(projectToRow(updated)).eq("id", editId);
-      if (error) { console.error(error); setSaveStatus("error"); return; }
-      setProjects(ps => ps.map(p => p.id === editId ? updated : p));
-      if (detailProject?.id === editId) setDetailProject(updated);
-      setEditId(null);
-    } else {
-      // INSERT
-      const { data, error } = await sb.from("projects").insert(projectToRow(form)).select().single();
-      if (error) { console.error(error); setSaveStatus("error"); return; }
-      setProjects(ps => [...ps, rowToProject(data)]);
+    if (!form.name.trim()) {
+      showToast("El nombre del proyecto es obligatorio", "warn");
+      return;
     }
+    if (saving) return;   // evitar doble-click
+    setSaving(true);
 
-    setSaveStatus("saved");
-    setTimeout(() => setSaveStatus("idle"), 2000);
-    setForm(EMPTY);
-    setShowForm(false);
+    try {
+      if (editId !== null) {
+        // UPDATE
+        const updated = { ...form, id: editId };
+        const { error } = await sb.from("projects").update(projectToRow(updated)).eq("id", editId);
+        if (error) throw error;
+        setProjects(ps => ps.map(p => p.id === editId ? updated : p));
+        if (detailProject?.id === editId) setDetailProject(updated);
+        setEditId(null);
+        showToast("Proyecto actualizado correctamente");
+      } else {
+        // INSERT — no enviar id, Supabase lo genera
+        const payload = projectToRow(form);
+        console.log("Insertando:", payload);
+        const { data, error } = await sb.from("projects").insert(payload).select().single();
+        if (error) throw error;
+        const newProject = rowToProject(data);
+        setProjects(ps => [...ps, newProject]);
+        showToast("Proyecto creado correctamente ✅");
+      }
+      setForm(EMPTY);
+      setShowForm(false);
+    } catch (err) {
+      console.error("saveProject error:", err);
+      showToast("Error al guardar: " + (err.message || JSON.stringify(err)), "err");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // ── ELIMINAR proyecto ──────────────────────────────────────
   async function deleteProject(id) {
     const { error } = await sb.from("projects").delete().eq("id", id);
-    if (error) { console.error(error); alert("❌ Error al eliminar"); return; }
+    if (error) { showToast("Error al eliminar: " + error.message, "err"); return; }
     setProjects(ps => ps.filter(p => p.id !== id));
     if (detailProject?.id === id) setDetailProject(null);
+    showToast("Proyecto eliminado");
   }
 
-  // ── ACTUALIZAR proyecto (usado desde DetailModal y cycleStatus) ──
+  // ── ACTUALIZAR proyecto (desde DetailModal y cycleStatus) ──
   async function updateProject(updated) {
     setProjects(ps => ps.map(p => p.id === updated.id ? updated : p));
     setDetailProject(updated);
-    await persistProject(updated);
+    const ok = await persistProject(updated);
+    if (ok) showToast("Guardado en Supabase ✅");
   }
 
   async function cycleStatus(id) {
@@ -382,6 +405,7 @@ function App(){
 
   return (
     <div style={{minHeight:"100vh",background:GREEN_LIGHT,fontFamily:"sans-serif"}}>
+      {toast && <Toast msg={toast.msg} type={toast.type} onDone={()=>setToast(null)}/>}
       {detailProject && <DetailModal project={detailProject} onClose={()=>setDetailProject(null)} onUpdate={updateProject}/>}
 
       {/* HEADER */}
@@ -396,11 +420,7 @@ function App(){
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            <div style={{fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:600,
-              background:saveStatus==="saved"?"#d1fae5":saveStatus==="saving"?"#fef9c3":saveStatus==="error"?"#fee2e2":"rgba(255,255,255,0.1)",
-              color:saveStatus==="saved"?"#065f46":saveStatus==="saving"?"#854d0e":saveStatus==="error"?"#991b1b":"#a8d5b5"}}>
-              {saveStatus==="saving"?"☁️ Guardando...":saveStatus==="saved"?"✅ Guardado en Supabase":saveStatus==="error"?"❌ Error al guardar":"☁️ Supabase"}
-            </div>
+            <div style={{fontSize:11,padding:"4px 12px",borderRadius:20,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"#a8d5b5"}}>☁️ Supabase</div>
             <button onClick={printReport} style={{background:"rgba(255,255,255,0.15)",color:"white",border:"none",borderRadius:8,padding:"7px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>📤 Exportar PDF</button>
             <div style={{display:"flex",gap:4}}>
               {VIEWS.map(v=><button key={v.k} onClick={()=>setView(v.k)} style={{background:view===v.k?"white":"rgba(255,255,255,0.12)",color:view===v.k?GREEN_DARK:"white",border:"none",borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer"}}>{v.l}</button>)}
@@ -412,7 +432,6 @@ function App(){
 
       <div style={{maxWidth:1000,margin:"0 auto",padding:"20px 16px"}}>
 
-        {/* Error de DB */}
         {dbError && <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#991b1b",fontSize:13}}>❌ {dbError}</div>}
 
         {/* KPIs */}
@@ -467,7 +486,18 @@ function App(){
               <div style={{background:"white",border:`1px solid #c6dfc9`,borderRadius:16,padding:20,marginBottom:16}}>
                 <h3 style={{margin:"0 0 14px",color:GREEN_DARK}}>{editId?"✏️ Editar proyecto":"➕ Nuevo proyecto"}</h3>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Nombre *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} style={S.input} placeholder="Ej. Instalación antivirus"/></div>
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Nombre *</label>
+                    <input
+                      value={form.name}
+                      onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+                      onKeyDown={e=>e.key==="Enter"&&saveProject()}
+                      style={{...S.input, border: form.name.trim()?"1px solid #e5e7eb":"1px solid #fca5a5"}}
+                      placeholder="Ej. Instalación antivirus"
+                      autoFocus
+                    />
+                    {!form.name.trim()&&<p style={{margin:"4px 0 0",fontSize:11,color:"#ef4444"}}>Campo obligatorio</p>}
+                  </div>
                   <div style={{gridColumn:"1/-1"}}>
                     <label style={{fontSize:11,color:"#6b7280",fontWeight:600,display:"block",marginBottom:8}}>Participantes</label>
                     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -482,9 +512,15 @@ function App(){
                   <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Avance: {form.progress}%</label><input type="range" min={0} max={100} value={form.progress} onChange={e=>setForm(f=>({...f,progress:+e.target.value}))} style={{width:"100%",marginTop:6,accentColor:GREEN}}/></div>
                   <div style={{gridColumn:"1/-1"}}><label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Notas</label><input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} style={S.input} placeholder="Opcional"/></div>
                 </div>
-                <div style={{display:"flex",gap:8,marginTop:14}}>
-                  <button onClick={saveProject} style={{background:GREEN,color:"white",border:"none",borderRadius:8,padding:"8px 22px",fontSize:13,fontWeight:700,cursor:"pointer"}}>{editId?"Guardar cambios":"Agregar"}</button>
-                  <button onClick={()=>{setShowForm(false);setEditId(null);}} style={{background:"white",color:"#6b7280",border:"1px solid #e5e7eb",borderRadius:8,padding:"8px 16px",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+                <div style={{display:"flex",gap:8,marginTop:14,alignItems:"center"}}>
+                  <button
+                    onClick={saveProject}
+                    disabled={saving}
+                    style={{background:saving?"#9ca3af":GREEN,color:"white",border:"none",borderRadius:8,padding:"9px 24px",fontSize:13,fontWeight:700,cursor:saving?"not-allowed":"pointer",minWidth:120}}>
+                    {saving ? "⏳ Guardando..." : editId ? "Guardar cambios" : "Agregar"}
+                  </button>
+                  <button onClick={()=>{setShowForm(false);setEditId(null);setForm(EMPTY);}} style={{background:"white",color:"#6b7280",border:"1px solid #e5e7eb",borderRadius:8,padding:"9px 16px",fontSize:13,cursor:"pointer"}}>Cancelar</button>
+                  {saving && <span style={{fontSize:12,color:GREEN_MID}}>Conectando con Supabase...</span>}
                 </div>
               </div>
             )}
@@ -518,7 +554,7 @@ function App(){
                         <div style={{display:"flex",gap:8}}>
                           <button onClick={()=>setDetailProject(p)} style={{background:"none",border:"none",color:GREEN,fontSize:12,fontWeight:600,cursor:"pointer"}}>Ver</button>
                           <button onClick={()=>startEdit(p)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:12,fontWeight:600,cursor:"pointer"}}>Editar</button>
-                          <button onClick={()=>{ if(confirm("¿Eliminar este proyecto?")) deleteProject(p.id); }} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
+                          <button onClick={async()=>{ if(window.confirm("¿Eliminar este proyecto?")) await deleteProject(p.id); }} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
                         </div>
                       </td>
                     </tr>
@@ -530,10 +566,8 @@ function App(){
           </>
         )}
 
-        {/* ── CALENDARIO ── */}
         {view==="calendario"&&<CalendarView projects={projects}/>}
 
-        {/* ── RESUMEN JEFE ── */}
         {view==="resumen"&&(
           <div style={{background:"white",borderRadius:16,padding:24,border:`1px solid #c6dfc9`}}>
             <div style={{display:"flex",alignItems:"center",gap:16,borderBottom:`1px solid #c6dfc9`,paddingBottom:16,marginBottom:20}}>
