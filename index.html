@@ -772,7 +772,7 @@ function App(){
   // ── CREAR / EDITAR proyecto ────────────────────────────────
   async function saveProject() {
     if (!form.name.trim()) {
-      showToast("El nombre del proyecto es obligatorio", "warn");
+      showToast("El nombre de la tarea es obligatorio", "warn");
       return;
     }
     if (saving) return;   // evitar doble-click
@@ -787,7 +787,7 @@ function App(){
         setProjects(ps => ps.map(p => p.id === editId ? updated : p));
         if (detailProject?.id === editId) setDetailProject(updated);
         setEditId(null);
-        showToast("Proyecto actualizado correctamente");
+        showToast("Tarea actualizada correctamente");
       } else {
         // INSERT — generamos id numérico en cliente (timestamp ms)
         const newId = Date.now();
@@ -797,7 +797,7 @@ function App(){
         if (error) throw error;
         const newProject = rowToProject(data);
         setProjects(ps => [...ps, newProject]);
-        showToast("Proyecto creado correctamente ✅");
+        showToast("Tarea creada correctamente ✅");
       }
       setForm(EMPTY);
       setShowForm(false);
@@ -815,7 +815,7 @@ function App(){
     if (error) { showToast("Error al eliminar: " + error.message, "err"); return; }
     setProjects(ps => ps.filter(p => p.id !== id));
     if (detailProject?.id === id) setDetailProject(null);
-    showToast("Proyecto eliminado");
+    showToast("Tarea eliminada");
   }
 
   // ── ACTUALIZAR proyecto (desde DetailModal y cycleStatus) ──
@@ -1011,12 +1011,12 @@ function App(){
                   {itProjects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-              <button onClick={()=>{setForm(EMPTY);setEditId(null);setShowForm(true);}} style={{background:GREEN,color:"white",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nuevo proyecto</button>
+              <button onClick={()=>{setForm(EMPTY);setEditId(null);setShowForm(true);}} style={{background:GREEN,color:"white",border:"none",borderRadius:8,padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Nueva tarea</button>
             </div>
 
             {showForm&&(
               <div style={{background:"white",border:`1px solid #c6dfc9`,borderRadius:16,padding:20,marginBottom:16}}>
-                <h3 style={{margin:"0 0 14px",color:GREEN_DARK}}>{editId?"✏️ Editar proyecto":"➕ Nuevo proyecto"}</h3>
+                <h3 style={{margin:"0 0 14px",color:GREEN_DARK}}>{editId?"✏️ Editar tarea":"➕ Nueva tarea"}</h3>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div style={{gridColumn:"1/-1"}}>
                     <label style={{fontSize:11,color:"#6b7280",fontWeight:600}}>Nombre *</label>
@@ -1067,10 +1067,10 @@ function App(){
             <div style={{background:"white",borderRadius:16,overflow:"hidden",border:`1px solid #c6dfc9`,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                 <thead><tr style={{background:GREEN,color:"white"}}>
-                  {["Proyecto","Participantes","Categoría","Prioridad","Estado","Avance","Deadline",""].map(h=><th key={h} style={{textAlign:"left",padding:"10px 16px",fontSize:11,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}
+                  {["Tarea","Participantes","Categoría","Prioridad","Estado","Avance","Deadline",""].map(h=><th key={h} style={{textAlign:"left",padding:"10px 16px",fontSize:11,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {filtered.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>No hay proyectos con estos filtros</td></tr>}
+                  {filtered.length===0&&<tr><td colSpan={8} style={{textAlign:"center",color:"#9ca3af",padding:32}}>No hay tareas con estos filtros</td></tr>}
                   {filtered.map((p,i)=>(
                     <tr key={p.id} style={{background:i%2===0?"white":"#f4fbf6",borderBottom:"1px solid #e8f5ee"}}>
                       <td style={{padding:"10px 16px"}}>
@@ -1097,7 +1097,7 @@ function App(){
                         <div style={{display:"flex",gap:8}}>
                           <button onClick={()=>setDetailProject(p)} style={{background:"none",border:"none",color:GREEN,fontSize:12,fontWeight:600,cursor:"pointer"}}>Ver</button>
                           <button onClick={()=>startEdit(p)} style={{background:"none",border:"none",color:"#3b82f6",fontSize:12,fontWeight:600,cursor:"pointer"}}>Editar</button>
-                          <button onClick={async()=>{ if(window.confirm("¿Eliminar este proyecto?")) await deleteProject(p.id); }} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
+                          <button onClick={async()=>{ if(window.confirm("¿Eliminar esta tarea?")) await deleteProject(p.id); }} style={{background:"none",border:"none",color:"#f87171",fontSize:12,fontWeight:600,cursor:"pointer"}}>✕</button>
                         </div>
                       </td>
                     </tr>
